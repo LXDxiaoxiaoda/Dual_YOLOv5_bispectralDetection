@@ -21,6 +21,9 @@ from scipy.signal import butter, filtfilt
 from utils.general import xywh2xyxy, xyxy2xywh
 from utils.metrics import fitness
 
+import logging
+logger = logging.getLogger(__name__)
+
 # Settings
 matplotlib.rc('font', **{'size': 11})
 matplotlib.use('Agg')  # for writing to files only
@@ -161,7 +164,8 @@ def plot_images(images, targets, paths=None, fname='images.jpg', names=None, max
         if scale_factor < 1:
             img = cv2.resize(img, (w, h))
 
-        mosaic[block_y:block_y + h, block_x:block_x + w, :] = img
+        # mosaic[block_y:block_y + h, block_x:block_x + w, :] = img   # 原版，ValueError: could not broadcast input array from shape (519,640,6) into shape (519,640,3)
+        mosaic[block_y:block_y + h, block_x:block_x + w, :] = img[:,:,:3]   # 修改如下
         if len(targets) > 0:
             image_targets = targets[targets[:, 0] == i]
             boxes = xywh2xyxy(image_targets[:, 2:6]).T
@@ -443,3 +447,50 @@ def plot_results(start=0, stop=0, bucket='', id=(), labels=(), save_dir=''):
 
     ax[1].legend()
     fig.savefig(Path(save_dir) / 'results.png', dpi=200)
+
+def feature_visualization(x, module_type, stage, n=64, save_dir=Path('runs/detect/visualization')):
+    """
+    x:              Features to be visualized
+    module_type:    Module type
+    stage:          Module stage within model
+    n:              Maximum number of feature maps to plot
+    save_dir:       Directory to save results
+    """
+    # if 'Detect' not in module_type and type(x) != tuple and stage > 18:    ### 去掉元组的情况，反正就个别层   通过组合条件，筛选可视化层
+    # if 'C3' in module_type:    ### 去掉元组的情况，只要C3层输出
+    if stage in [32]:   ### 指定层输出
+
+        # module_type: 模块类型     stage：第几个模块
+        # 正常 x：<class 'torch.Tensor'>  特殊情况（Add的输入）：<class 'tuple'>，里面两个元素，每个元素就是<class 'torch.Tensor'>
+        batch, channels, height, width = x.shape  # batch, channels, height, width
+        if height > 1 and width > 1:
+            f = save_dir / f"stage{stage}_{module_type.split('.')[-1]}_features.png"  # filename
+
+            # 检查文件夹
+            if not os.path.exists(save_dir):
+                os.makedirs(save_dir)
+                print(f"Directory {save_dir} was created for saving visualization results.")
+            else:
+                print(f"Directory {save_dir} already exists. Visualization results will be saved here.")
+
+            # 假设我们想要间隔k个抽取一个卷积核
+            k = 1
+            selected_indices = list(range(0, channels, k))
+            selected_channels = x[0, selected_indices, :, :].cpu().detach()
+
+            # blocks = torch.chunk(x[0].cpu().detach(), channels, dim=0)  # select batch index 0, block by channels   按通道分成独立的块
+            # detach() 将从梯度计算中剥离出来，这样才能后续转换为numpy数组
+            n = min(n, channels)  # number of plots     决定子图的数量，一般是n，即32
+            fig, ax = plt.subplots(math.ceil(n / 8), 8, tight_layout=True)  # 8 rows x n/8 cols     4行8列 子图代表卷积核学习的特征
+            ax = ax.ravel()
+            plt.subplots_adjust(wspace=0.05, hspace=0.05)
+            for i in range(n):
+                # ax[i].imshow(blocks[i].squeeze())   
+                ax[i].imshow(selected_channels[i].squeeze())   
+                # ax[i].imshow(blocks[i].squeeze(), cmap='gray')  # cmap='gray' 用灰度显示特征图
+                ax[i].axis('off')
+
+            logger.info(f'Saving {f}... ({n}/{channels})')
+            plt.savefig(f, dpi=600, bbox_inches='tight')
+            plt.close()
+            np.save(str(f.with_suffix('.npy')), x[0].cpu().detach().numpy())  # npy save

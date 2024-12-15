@@ -1,0 +1,13 @@
+# train and val data as 1) directory: path/images/, 2) file: path/images.txt, or 3) list: [path1/images/, path2/images/]
+path: /project/datasets/FLIR_aligned
+# RGB + IR
+train_rgb: /project/datasets/FLIR_aligned/infrared/train  # 128 images
+val_rgb: /project/datasets/FLIR_aligned/infrared/test  # 128 images
+train_ir: /project/datasets/FLIR_aligned/infrared/train  # 128 images
+val_ir: /project/datasets/FLIR_aligned/infrared/test  # 128 images
+
+# number of classes
+nc: 3
+
+# class names
+names: ['person', 'car', 'bicycle']
